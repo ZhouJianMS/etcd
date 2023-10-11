@@ -114,6 +114,16 @@ type Server interface {
 	// UnblackholeRx removes blackhole operation on "receiving".
 	UnblackholeRx()
 
+	// PossibleBlackholeTx has 50% possibility to drop all "outgoing" packets before "forwarding".
+	// "PossibleBlackholeTx" operation is a wrapper around "ModifyTx" with
+	// a function that returns empty bytes.
+	PossibleBlackholeTx()
+
+	// PossibleBlackholeRx has 50% possibility to drop all "incoming" packets to client.
+	// "PossibleBlackholeRx" operation is a wrapper around "ModifyRx" with
+	// a function that returns empty bytes.
+	PossibleBlackholeRx()
+
 	// PauseTx stops "forwarding" packets; "outgoing" traffic blocks.
 	PauseTx()
 	// UnpauseTx removes "forwarding" pause operation.
@@ -891,6 +901,24 @@ func (s *server) UnblackholeRx() {
 	s.UnmodifyRx()
 	s.lg.Info(
 		"unblackholed rx",
+		zap.String("from", s.To()),
+		zap.String("to", s.From()),
+	)
+}
+
+func (s *server) PossibleBlackholeTx() {
+	s.ModifyTx(func(data[]byte) []byte { if mrand.Int()%2 == 0 {return nil} else {return data} })
+	s.lg.Info(
+		"possible blackholed tx",
+		zap.String("from", s.From()),
+		zap.String("to", s.To()),
+	)
+}
+
+func (s *server) PossibleBlackholeRx() {
+	s.ModifyRx(func(data[]byte) []byte { if mrand.Int()%2 == 0 {return nil} else {return data} })
+	s.lg.Info(
+		"possible blackholed rx",
 		zap.String("from", s.To()),
 		zap.String("to", s.From()),
 	)

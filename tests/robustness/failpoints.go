@@ -67,6 +67,7 @@ var (
 	RaftBeforeSaveSnapPanic                  Failpoint = goPanicFailpoint{"raftBeforeSaveSnap", triggerBlackhole{waitTillSnapshot: true}, Follower}
 	RaftAfterSaveSnapPanic                   Failpoint = goPanicFailpoint{"raftAfterSaveSnap", triggerBlackhole{waitTillSnapshot: true}, Follower}
 	beforeApplyOneConfChangeSleep            Failpoint = killAndGofailSleep{"beforeApplyOneConfChange", time.Second}
+	ProbabilisticBlackholePeerNetwork        Failpoint = probabilisticBlackholePeerNetworkFailpoint{triggerProbabilisticBlackhole{waitTillSnapshot: false}}
 	allFailpoints                                      = []Failpoint{
 		KillFailpoint, BeforeCommitPanic, AfterCommitPanic, RaftBeforeSavePanic, RaftAfterSavePanic,
 		DefragBeforeCopyPanic, DefragBeforeRenamePanic, BackendBeforePreCommitHookPanic, BackendAfterPreCommitHookPanic,
@@ -76,7 +77,7 @@ var (
 		CompactAfterCommitBatchPanic, RaftBeforeLeaderSendPanic, BlackholePeerNetwork, DelayPeerNetwork,
 		RaftBeforeFollowerSendPanic, RaftBeforeApplySnapPanic, RaftAfterApplySnapPanic, RaftAfterWALReleasePanic,
 		RaftBeforeSaveSnapPanic, RaftAfterSaveSnapPanic, BlackholeUntilSnapshot,
-		beforeApplyOneConfChangeSleep,
+		beforeApplyOneConfChangeSleep, ProbabilisticBlackholePeerNetwork,
 	}
 )
 
@@ -433,6 +434,53 @@ func blackhole(ctx context.Context, t *testing.T, member e2e.EtcdProcess, clus *
 	}
 	time.Sleep(time.Second)
 	return nil
+}
+
+type probabilisticBlackholePeerNetworkFailpoint struct {
+	triggerProbabilisticBlackhole
+}
+
+func (f probabilisticBlackholePeerNetworkFailpoint) Inject(ctx context.Context, t *testing.T, lg *zap.Logger, clus *e2e.EtcdProcessCluster) error {
+	member := clus.Procs[rand.Int()%len(clus.Procs)]
+	return f.Trigger(t, ctx, member, clus)
+}
+
+func (f probabilisticBlackholePeerNetworkFailpoint) Name() string {
+	return "probabilisticBlackhole"
+}
+
+type triggerProbabilisticBlackhole struct {
+	waitTillSnapshot bool
+}
+
+func (tb triggerProbabilisticBlackhole) Trigger(t *testing.T, ctx context.Context, member e2e.EtcdProcess, clus *e2e.EtcdProcessCluster) error {
+	return probabilisticBlackhole(t, ctx, member, clus, tb.waitTillSnapshot)
+}
+
+func (tb triggerProbabilisticBlackhole) Available(config e2e.EtcdProcessClusterConfig, process e2e.EtcdProcess) bool {
+	if tb.waitTillSnapshot && config.ServerConfig.SnapshotCatchUpEntries > 100 {
+		return false
+	}
+	return config.ClusterSize > 1 && process.PeerProxy() != nil
+}
+
+func probabilisticBlackhole(t *testing.T, ctx context.Context, member e2e.EtcdProcess, clus *e2e.EtcdProcessCluster, shouldWaitTillSnapshot bool) error {
+	proxy := member.PeerProxy()
+
+	t.Logf("Probabilistic blackholing traffic from and to member %q", member.Config().Name)
+	proxy.PossibleBlackholeTx()
+	proxy.PossibleBlackholeRx()
+	defer func() {
+		t.Logf("Traffic restored from and to member %q", member.Config().Name)
+		proxy.UnblackholeTx()
+		proxy.UnblackholeRx()
+	}()
+	if shouldWaitTillSnapshot {
+		return waitTillSnapshot(ctx, t, clus, member)
+	} else {
+		time.Sleep(time.Second)
+		return nil
+	}
 }
 
 func waitTillSnapshot(ctx context.Context, t *testing.T, clus *e2e.EtcdProcessCluster, blackholedMember e2e.EtcdProcess) error {
