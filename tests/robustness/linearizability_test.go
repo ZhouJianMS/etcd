@@ -98,7 +98,6 @@ func TestRobustness(t *testing.T) {
 		}
 		scenarios = append(scenarios, testScenario{
 			name:    name,
-			failpoint: ProbabilisticPacketLossFail,
 			traffic: tp.Traffic,
 			profile: tp.Profile,
 			cluster: *e2e.NewConfig(clusterOfSize3Options...),
