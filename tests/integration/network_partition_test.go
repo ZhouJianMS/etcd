@@ -139,6 +139,94 @@ func TestNetworkPartition4Members(t *testing.T) {
 	clusterMustProgress(t, clus.Members)
 }
 
+func TestUnidirectionalNetworkPartition5MembersLeaderInMinority(t *testing.T) {
+	integration.BeforeTest(t)
+
+	clus := integration.NewCluster(t, &integration.ClusterConfig{Size: 5})
+	defer clus.Terminate(t)
+
+	leadIndex := clus.WaitLeader(t)
+
+	// minority: leader, follower / majority: follower, follower, follower
+	minority := []int{leadIndex, (leadIndex + 1) % 5}
+	majority := []int{(leadIndex + 2) % 5, (leadIndex + 3) % 5, (leadIndex + 4) % 5}
+
+
+	minorityMembers := getMembersByIndexSlice(clus, minority)
+	majorityMembers := getMembersByIndexSlice(clus, majority)
+
+	// network partition (uni-directional)
+	injectUnidirectionalPartition(t, majorityMembers, minorityMembers)
+
+	// minority leader must be lost
+	clus.WaitMembersNoLeader(minorityMembers)
+
+	// wait extra election timeout
+	time.Sleep(2 * majorityMembers[0].ElectionTimeout())
+
+	// new leader must be from majority
+	clus.WaitMembersForLeader(t, majorityMembers)
+
+	// recover network partition
+	recoverPartition(t, minorityMembers, majorityMembers)
+
+	// write to majority first
+	clusterMustProgress(t, append(majorityMembers, minorityMembers...))
+}
+
+func TestUnidirectionalNetworkPartition5MembersLeaderInMajority(t *testing.T) {
+	// retry up to 3 times, in case of leader election on majority partition due to slow hardware
+	var err error
+	for i := 0; i < 3; i++ {
+		if err = testUnidirectionalNetworkPartition5MembersLeaderInMajority(t); err == nil {
+			break
+		}
+		t.Logf("[%d] got %v", i, err)
+	}
+	if err != nil {
+		t.Fatalf("failed after 3 tries (%v)", err)
+	}
+}
+
+func testUnidirectionalNetworkPartition5MembersLeaderInMajority(t *testing.T) error {
+	integration.BeforeTest(t)
+
+	clus := integration.NewCluster(t, &integration.ClusterConfig{Size: 5})
+	defer clus.Terminate(t)
+
+	leadIndex := clus.WaitLeader(t)
+
+	// majority: leader, follower, follower / minority: follower, follower
+	majority := []int{leadIndex, (leadIndex + 1) % 5, (leadIndex + 2) % 5}
+	minority := []int{(leadIndex + 3) % 5, (leadIndex + 4) % 5}
+
+	majorityMembers := getMembersByIndexSlice(clus, majority)
+	minorityMembers := getMembersByIndexSlice(clus, minority)
+
+	// network partition (uni-directional)
+	injectUnidirectionalPartition(t, majorityMembers, minorityMembers)
+
+	// minority leader must be lost
+	clus.WaitMembersNoLeader(minorityMembers)
+
+	// wait extra election timeout
+	time.Sleep(2 * majorityMembers[0].ElectionTimeout())
+
+	// leader must be hold in majority
+	leadIndex2 := clus.WaitMembersForLeader(t, majorityMembers)
+	leadID, leadID2 := clus.Members[leadIndex].Server.MemberId(), majorityMembers[leadIndex2].Server.MemberId()
+	if leadID != leadID2 {
+		return fmt.Errorf("unexpected leader change from %s, got %s", leadID, leadID2)
+	}
+
+	// recover network partition
+	recoverPartition(t, majorityMembers, minorityMembers)
+
+	// write to majority first
+	clusterMustProgress(t, append(majorityMembers, minorityMembers...))
+	return nil
+}
+
 func getMembersByIndexSlice(clus *integration.Cluster, idxs []int) []*integration.Member {
 	ms := make([]*integration.Member, len(idxs))
 	for i, idx := range idxs {
@@ -156,5 +244,12 @@ func injectPartition(t *testing.T, src, others []*integration.Member) {
 func recoverPartition(t *testing.T, src, others []*integration.Member) {
 	for _, m := range src {
 		m.RecoverPartition(t, others...)
+	}
+}
+
+// injectUnidirectionalPartition blocks messages from src to others
+func injectUnidirectionalPartition(t *testing.T, src, others []*integration.Member) {
+	for _, m := range src {
+		m.InjectUnidirectionalPartition(t, others...)
 	}
 }
