@@ -48,6 +48,8 @@ var (
 		BeforeApplyOneConfChangeSleep,
 		MemberReplace,
 		DropPeerNetwork,
+		BeforeReadPanic,
+		BeforeConcurrentReadPanic,
 	}
 )
 
