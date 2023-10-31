@@ -242,12 +242,16 @@ func (b *backend) SetTxPostLockInsideApplyHook(hook func()) {
 	b.txPostLockInsideApplyHook = hook
 }
 
-func (b *backend) ReadTx() ReadTx { return b.readTx }
+func (b *backend) ReadTx() ReadTx {
+	// gofail: var beforeRead struct{}
+	return b.readTx 
+}
 
 // ConcurrentReadTx creates and returns a new ReadTx, which:
 // A) creates and keeps a copy of backend.readTx.txReadBuffer,
 // B) references the boltdb read Tx (and its bucket cache) of current batch interval.
 func (b *backend) ConcurrentReadTx() ReadTx {
+	// gofail: var beforeConcurrentRead struct{}
 	b.readTx.RLock()
 	defer b.readTx.RUnlock()
 	// prevent boltdb read Tx from been rolled back until store read Tx is done. Needs to be called when holding readTx.RLock().

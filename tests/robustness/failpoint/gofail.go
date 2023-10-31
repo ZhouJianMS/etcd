@@ -54,6 +54,8 @@ var (
 	RaftBeforeSaveSnapPanic                  Failpoint = goPanicFailpoint{"raftBeforeSaveSnap", triggerBlackhole{waitTillSnapshot: true}, Follower}
 	RaftAfterSaveSnapPanic                   Failpoint = goPanicFailpoint{"raftAfterSaveSnap", triggerBlackhole{waitTillSnapshot: true}, Follower}
 	BeforeApplyOneConfChangeSleep            Failpoint = killAndGofailSleep{"beforeApplyOneConfChange", time.Second}
+	BeforeReadPanic                          Failpoint = goPanicFailpoint{"beforeRead", nil, AnyMember}
+	BeforeConcurrentReadPanic                Failpoint = goPanicFailpoint{"beforeConcurrentRead", nil ,AnyMember}
 )
 
 type goPanicFailpoint struct {
