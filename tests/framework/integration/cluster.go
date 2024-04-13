@@ -1373,6 +1373,14 @@ func (m *Member) RecoverPartition(t testutil.TB, others ...*Member) {
 	}
 }
 
+// InjectUnidirectionalPartition drops one way connections from m to others.
+func (m *Member) InjectUnidirectionalPartition(t testutil.TB, others ...*Member) {
+	for _, other := range others {
+		m.Server.CutPeer(other.Server.MemberId())
+		t.Logf("one way network partition injected from %v to %v", m.Server.MemberId(), other.Server.MemberId())
+	}
+}
+
 func (m *Member) ReadyNotify() <-chan struct{} {
 	return m.Server.ReadyNotify()
 }
